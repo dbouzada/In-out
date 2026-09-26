@@ -64,8 +64,7 @@
     document.getElementById('btn').disabled = true;
     setEstado('Enviando…');
     try {
-      // text/plain evita el preflight CORS que Apps Script no soporta
-      const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(datos) });
+      const r = await fetch(API + '?action=encolar&datos=' + encodeURIComponent(JSON.stringify(datos)));
       const res = await r.json();
       if (res.error) throw new Error(res.error);
       setEstado('Consulta ' + res.id + ' en cola…');
