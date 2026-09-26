@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --bg:#EEF2F1; --ink:#1C2B2A; --muted:#5B6B69; --accent:#1F6F5C; --line:#C9D4D2; --err:#B3261E; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  main { max-width:480px; margin:0 auto; padding:24px 18px 48px; }
+  h1 { font-size:1.6rem; margin:0 0 4px; letter-spacing:-.01em; }
+  p.sub { color:var(--muted); margin:0 0 24px; }
+  label { display:block; font-weight:600; margin:16px 0 6px; }
+  input { width:100%; font-size:16px; padding:12px 14px; border:1.5px solid var(--line);
+          border-radius:10px; background:#fff; color:var(--ink); }
+  input:focus { outline:none; border-color:var(--accent); }
+  button { width:100%; margin-top:24px; padding:15px; font-size:1rem; font-weight:600;
+           border:0; border-radius:10px; background:var(--accent); color:#fff; }
+  button:disabled { opacity:.55; }
+  button:focus-visible { outline:3px solid var(--ink); outline-offset:2px; }
+  #estado { margin-top:20px; color:var(--muted); min-height:1.5em; }
+  #estado.error { color:var(--err); }
+  #resultado { display:none; margin-top:12px; background:#fff; border-left:4px solid var(--accent);
+               padding:16px; border-radius:6px; white-space:pre-wrap; word-break:break-word; }
+  .otra { background:transparent; color:var(--accent); border:1.5px solid var(--accent); display:none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Nueva consulta</h1>
+  <p class="sub">Completá los datos y esperá el resultado en esta misma pantalla.</p>
+
+  <form id="f" onsubmit="enviar(event)">
+    <label for="campo1">Campo 1</label><input id="campo1" required>
+    <label for="campo2">Campo 2</label><input id="campo2" required>
+    <label for="campo3">Campo 3</label><input id="campo3" required>
+    <label for="campo4">Campo 4</label><input id="campo4" required>
+    <label for="campo5">Campo 5</label><input id="campo5" required>
+    <button id="btn" type="submit">Enviar consulta</button>
+  </form>
+
+  <div id="estado" aria-live="polite"></div>
+  <div id="resultado"></div>
+  <button id="otra" class="otra" onclick="reiniciar()">Hacer otra consulta</button>
+</main>
+
+<script>
+  // Pegá acá la URL /exec de la implementación de Apps Script
+  const API = 'PEGAR_URL_EXEC';
+  const CAMPOS = ['campo1','campo2','campo3','campo4','campo5'];
+  const INTERVALO_MS = 3000;
+  const MAX_INTENTOS = 400;
+
+  function setEstado(txt, esError) {
+    const e = document.getElementById('estado');
+    e.textContent = txt; e.className = esError ? 'error' : '';
+  }
+
+  async function enviar(ev) {
+    ev.preventDefault();
+    const datos = {};
+    CAMPOS.forEach(c => datos[c] = document.getElementById(c).value);
+    document.getElementById('btn').disabled = true;
+    setEstado('Enviando…');
+    try {
+      // text/plain evita el preflight CORS que Apps Script no soporta
+      const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(datos) });
+      const res = await r.json();
+      if (res.error) throw new Error(res.error);
+      setEstado('Consulta ' + res.id + ' en cola…');
+      esperar(res.id, 0);
+    } catch (err) {
+      setEstado('No se pudo enviar: ' + err.message, true);
+      document.getElementById('btn').disabled = false;
+    }
+  }
+
+  async function esperar(id, n) {
+    if (n >= MAX_INTENTOS) { setEstado('Se dejó de esperar la consulta ' + id + '.', true); mostrarOtra(); return; }
+    try {
+      const r = await fetch(API + '?action=consultar&id=' + encodeURIComponent(id));
+      const res = await r.json();
+      if (res.error) throw new Error(res.error);
+      if (res.estado === 'listo') {
+        setEstado('Resultado de ' + id);
+        const box = document.getElementById('resultado');
+        box.textContent = res.salida; box.style.display = 'block';
+        mostrarOtra(); return;
+      }
+      if (res.estado === 'error') { setEstado(res.salida, true); mostrarOtra(); return; }
+      if (res.estado === 'procesando') setEstado('Procesando tu consulta ' + id + '…');
+      else setEstado(res.delante === 1 ? 'Hay 1 consulta antes que la tuya' : 'Hay ' + res.delante + ' consultas antes que la tuya');
+    } catch (err) { /* error de red momentáneo: reintenta */ }
+    setTimeout(() => esperar(id, n + 1), INTERVALO_MS);
+  }
+
+  function mostrarOtra() { document.getElementById('otra').style.display = 'block'; }
+
+  function reiniciar() {
+    document.getElementById('f').reset();
+    document.getElementById('btn').disabled = false;
+    document.getElementById('resultado').style.display = 'none';
+    document.getElementById('otra').style.display = 'none';
+    setEstado('');
+  }
+</script>
+</body>
+</html>
